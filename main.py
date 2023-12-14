@@ -19,22 +19,22 @@ class SugarAgent(Agent):
     self.vision = np.random.randint(1, 6)
 
   def move(self):
-    neighbors_sugar = self.model.grid.get_neighborhood(
-        self.pos, moore=True, radius=self.vision)
+    neighbors_sugar = list(self.model.grid.get_neighborhood(
+        self.pos, moore=True, radius=self.vision))
+    np.random.shuffle(neighbors_sugar)
     neighbors = self.model.grid.get_neighborhood(
         self.pos, moore=True, radius=1)
     max_sugar = max(
         neighbors_sugar, key=lambda x: self.model.sugar[x], default=None)
-    # if self.model.get_sugar(max_sugar) == -114514:
-    #   max_sugar = None
     if not max_sugar:
       return False
     
     possible_moves = [
         cell for cell in neighbors if cell in neighbors_sugar and self.model.grid.is_cell_empty(cell)]
+    np.random.shuffle(possible_moves)
     if not possible_moves:
       return False
-    new_pos = max(
+    new_pos = min(
         possible_moves, key=lambda x: abs(x[0] - max_sugar[0]) + abs(x[1] - max_sugar[1]))
     self.model.grid.move_agent(self, new_pos)
     # self.pos = new_pos
