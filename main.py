@@ -28,7 +28,7 @@ class SugarAgent(Agent):
         neighbors_sugar, key=lambda x: self.model.sugar[x], default=None)
     if not max_sugar:
       return False
-    
+
     possible_moves = [
         cell for cell in neighbors if cell in neighbors_sugar and self.model.grid.is_cell_empty(cell)]
     np.random.shuffle(possible_moves)
@@ -114,7 +114,9 @@ def plot_model(model: Sugarscape):
   # Plotting agent positions
   agents_x = [pos[0] for pos in agent_positions]
   agents_y = [pos[1] for pos in agent_positions]
-  plt.scatter(agents_x, agents_y, c='blue', marker='o', s=10, label='Agents')
+  agents_colors = [agent.sugar for agent in model.schedule.agents]
+  plt.scatter(agents_x, agents_y, c=agents_colors, marker='o',
+              s=10, label='Agents', cmap='viridis')
 
   plt.title(f'Sugarscape Model at Step {model.schedule.steps}')
   plt.legend()
