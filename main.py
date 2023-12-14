@@ -1,63 +1,130 @@
+from typing import List
+
 from mesa import Agent, Model
-from mesa.time import RandomActivation
 from mesa.space import MultiGrid
-from mesa.datacollection import DataCollector
-import random
+from mesa.time import RandomActivation
+import numpy as np
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+
 
 class SugarAgent(Agent):
-  def __init__(self, unique_id, model):
+
+  model: 'Sugarscape' = None
+
+  def __init__(self, unique_id, model: 'Sugarscape'):
     super().__init__(unique_id, model)
-    self.resources = random.randint(0, 10)
-    self.wealth = self.resources
+    self.sugar = np.random.uniform(5, 25)
+    self.metabolism = np.random.uniform(1, 4)
+    self.vision = np.random.randint(1, 6)
+
+  def move(self):
+    neighbors_sugar = self.model.grid.get_neighborhood(
+        self.pos, moore=True, radius=self.vision)
+    neighbors = self.model.grid.get_neighborhood(
+        self.pos, moore=True, radius=1)
+    max_sugar = max(
+        neighbors_sugar, key=lambda x: self.model.sugar[x], default=None)
+    # if self.model.get_sugar(max_sugar) == -114514:
+    #   max_sugar = None
+    if not max_sugar:
+      return False
+    
+    possible_moves = [
+        cell for cell in neighbors if cell in neighbors_sugar and self.model.grid.is_cell_empty(cell)]
+    if not possible_moves:
+      return False
+    new_pos = max(
+        possible_moves, key=lambda x: abs(x[0] - max_sugar[0]) + abs(x[1] - max_sugar[1]))
+    self.model.grid.move_agent(self, new_pos)
+    # self.pos = new_pos
+    return True
 
   def step(self):
-    # 社会交互
-    neighbors = self.model.grid.get_neighbors(self.pos, moore=True)
-    if neighbors:
-      other_agent = random.choice(neighbors)
-      transfer_amount = random.randint(0, min(self.wealth, other_agent.wealth))
-      self.wealth -= transfer_amount
-      other_agent.wealth += transfer_amount
+    self.move()
+    self.sugar += self.model.sugar[self.pos]
+    self.model.sugar[self.pos] = 0
+    self.sugar -= self.metabolism
+    if self.sugar <= 0:  # die
+      self.model.grid.remove_agent(self)
+      self.model.schedule.remove(self)
 
-    # 阶层流动
-    if random.random() < 0.1:
-      self.wealth += 1
 
-class SugarModel(Model):
-  def __init__(self, width, height, N):
-    self.num_agents = N
+def sugar_field_random(width: int, height: int):
+  return np.random.choice([4, 3, 2, 1], size=(width, height))
+
+
+def sugar_field_circular(width: int, height: int):
+  x_coord = np.arange(width)
+  x_coord = np.stack([x_coord] * height, axis=1) / width
+  y_coord = np.arange(height)
+  y_coord = np.stack([y_coord] * width, axis=0) / height
+  ret = np.zeros((width, height), dtype=int) + 1
+  c1 = ((x_coord - 0.25) ** 2 + (y_coord - 0.75) ** 2) ** 0.5
+  c2 = ((x_coord - 0.75) ** 2 + (y_coord - 0.25) ** 2) ** 0.5
+  c = np.copy(c1)
+  c[c1 > c2] = c2[c1 > c2]
+  ret[c < 0.54] = 2
+  ret[c < 0.36] = 3
+  ret[c < 0.18] = 4
+  return ret
+
+
+class Sugarscape(Model):
+  def __init__(self, width: int, height: int, agent_count: int):
     self.grid = MultiGrid(width, height, True)
     self.schedule = RandomActivation(self)
+    self.sugar = sugar_field_circular(width, height)
+    self.sugar_max = np.copy(self.sugar)
+    self.create_agents(agent_count)
 
-    # 创建代理
-    for i in range(self.num_agents):
-      agent = SugarAgent(i, self)
-      x = random.randrange(self.grid.width)
-      y = random.randrange(self.grid.height)
+  def create_agents(self, agent_count):
+    sequence = np.random.choice(
+        self.grid.width * self.grid.height,
+        (agent_count, ),
+        replace=False
+    )
+    for w in sequence:
+      x = w % self.grid.width
+      y = (w - x) // self.grid.height
+      agent = SugarAgent((x, y), self)
       self.grid.place_agent(agent, (x, y))
       self.schedule.add(agent)
 
-    # 数据收集
-    self.datacollector = DataCollector(agent_reporters={"Wealth": "wealth"})
+  def get_sugar(self, pos):
+    lst: List[SugarAgent] = self.grid.get_cell_list_contents(pos)
+    return -114514 if not lst else lst[0].sugar
 
   def step(self):
-    self.datacollector.collect(self)
     self.schedule.step()
+    self.sugar[self.sugar < self.sugar_max] += 1
 
-# 模拟参数
-width = 10
-height = 10
-num_agents = 100
 
-# 创建模型
-model = SugarModel(width, height, num_agents)
+def plot_model(model: Sugarscape):
+  # Extracting sugar levels from the model
+  sugar = model.sugar
+  agent_positions = [agent.pos for agent in model.schedule.agents]
 
-# 运行模拟
-for i in range(100):
+  # Creating a plot
+  plt.figure(figsize=(8, 8))
+
+  # Plotting sugar distribution
+  plt.imshow(8 - sugar, vmin=0, vmax=8)
+
+  # Plotting agent positions
+  agents_x = [pos[0] for pos in agent_positions]
+  agents_y = [pos[1] for pos in agent_positions]
+  plt.scatter(agents_x, agents_y, c='blue', marker='o', s=10, label='Agents')
+
+  plt.title(f'Sugarscape Model at Step {model.schedule.steps}')
+  plt.legend()
+  plt.grid(True)
+  plt.show()
+
+
+# Example usage:
+model = Sugarscape(50, 50, 400)
+for i in tqdm(range(100 + 1)):
   model.step()
-
-# 可视化数据
-import matplotlib.pyplot as plt
-agent_wealth = model.datacollector.get_agent_vars_dataframe().unstack(level=0)
-agent_wealth.plot()
-plt.show()
+  if i % 10 == 0:
+    plot_model(model)
