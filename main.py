@@ -14,9 +14,14 @@ class SugarAgent(Agent):
 
   def __init__(self, unique_id, model: 'Sugarscape'):
     super().__init__(unique_id, model)
-    self.sugar = np.random.uniform(5, 25)
+    # params
     self.metabolism = np.random.uniform(1, 4)
     self.vision = np.random.randint(1, 6)
+    self.capacity = 40  # TODO
+    # state
+    self.sugar = np.random.uniform(5, 25)
+    self.skill: float = 0  # TODO
+    self.food: float = 0  # TODO
 
   def move(self):
     neighbors_sugar = list(self.model.grid.get_neighborhood(
@@ -40,14 +45,20 @@ class SugarAgent(Agent):
     # self.pos = new_pos
     return True
 
-  def step(self):
-    self.move()
+  def dig(self):
     self.sugar += self.model.sugar[self.pos]
     self.model.sugar[self.pos] = 0
     self.sugar -= self.metabolism
+
+  def starve(self):
     if self.sugar <= 0:  # die
       self.model.grid.remove_agent(self)
       self.model.schedule.remove(self)
+
+  def step(self):
+    self.move()
+    self.dig()
+    self.starve()
 
 
 def sugar_field_random(width: int, height: int):
@@ -91,12 +102,9 @@ class Sugarscape(Model):
       self.grid.place_agent(agent, (x, y))
       self.schedule.add(agent)
 
-  def get_sugar(self, pos):
-    lst: List[SugarAgent] = self.grid.get_cell_list_contents(pos)
-    return -114514 if not lst else lst[0].sugar
-
   def step(self):
     self.schedule.step()
+    # sugar grow
     self.sugar[self.sugar < self.sugar_max] += 1
 
 
